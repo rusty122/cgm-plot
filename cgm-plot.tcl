@@ -5,65 +5,79 @@ package require Tk
 package require Plotchart
 
 # constants for plot dimensions
-set width 700
 set height 500
+set width 700
 
-# constants for y-axis scale and ticklines
+# constants for y-axis
+set y_description "Blood Glucose (mg/dL)"
 set y_start 0
 set y_end 300
 set y_step 50
+
+# constants for x-axis
+set hours_displayed 6
+set time_scale [clock add 0 $hours_displayed hours]
+set x_leading_minutes 15
+set x_time_format {%l:%M %p}
+set x_hour_multiple 3
 
 # constants for low and high cutoffs
 set low_cutoff 75
 set high_cutoff 140
 
-canvas .c -background white -width $width -height $height
-pack .c -fill both
+# setup timescale
+set now [clock seconds]
+set stop [clock add $now $x_leading_minutes minutes]
+set start [clock add $stop -$hours_displayed hours]
 
-# Setup timescale
-set stop  [clock add [clock seconds] 15 minutes]
-set start [clock add $stop -12 hours]
-
-set x_times {}
-for {set i 0} {$i < 13} {incr i} {
-    set t [clock add $start $i hours]
-    # only use time if hour is multiple of 3 (e.g. 3:00, 6:00, 9:00, 12:00)
-    # otherwise use empty string placeholder so hourly tickmarks still rendered
+proc time_local_hour {t} {
     set hour [clock format $t -format {%I}]
+    # format hour string so it gets parsed as integer
     scan $hour "%d" hour
-    if {$hour % 3 == 0} {
-        lappend x_times [clock format $t -format {%l:%M %p}]
+    return $hour
+}
+
+# manually pick x-axis labels
+set x_times {}
+for {set i 0} {$i < $hours_displayed + 1} {incr i} {
+    set t [clock add $start $i hours]
+    # only use time if hour is not approprite multiple then use
+    # empty string placeholder so that hourly tickmarks still render
+    if {[time_local_hour $t] % $x_hour_multiple == 0} {
+        lappend x_times [clock format $t -format $x_time_format]
     } else {
         lappend x_times " "
     }
 }
 
+# create canvas and initialize plot
+canvas .c -background white -width $width -height $height
+pack .c -fill both
 set s [::Plotchart::createXYPlot .c [list $start $stop ""] [list $y_start $y_end $y_step] -xlabels $x_times]
 
-# Perform configuration
+# perform configuration
 $s dotconfig data -colour black -outline off -scalebyvalue off -radius 3.5
 $s dotconfig current -colour white -outline on -scalebyvalue off -radius 4
 $s vectorconfig low -colour red
 $s vectorconfig high -colour yellow
 $s balloonconfig -outline white
 
-$s vector low $start $low_cutoff [expr {$stop - $start}] 0
-$s vector high $start $high_cutoff [expr {$stop - $start}] 0
+# draw high and low vectors
+$s vector low $start $low_cutoff $time_scale 0
+$s vector high $start $high_cutoff $time_scale 0
 
 # Set chart title and axis labels
 $s title "CGM Dashboard"
 if {$tcl_version < 8.6} {
-    $s ytext "BG (mg/dL)"
+    $s ytext $y_description
 } else {
-    $s vtext "Blood Glucose (mg/dL)"
+    $s vtext $y_description
 }
 
 # bogus data
-set tmp [clock seconds]
-# Plot data here
-$s dot data $tmp 140 _
-$s dot current $tmp 120 _
-$s dot data $tmp 50 _
+$s dot data $now 140 _
+$s dot current $now 120 _
+$s dot data $now 50 _
 
-$s balloon $tmp 145 "Max: 140" south
-$s balloon $tmp 45 "Min: 50" north
+$s balloon $now 145 "Max: 140" south
+$s balloon $now 45 "Min: 50" north
