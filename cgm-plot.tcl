@@ -1,8 +1,11 @@
-#!/usr/bin/tclsh
+#!/usr/bin/env tclsh
 
 package require Tcl
 package require Tk
 package require Plotchart
+package require json
+package require http
+package require tls
 
 set title "CGM Dashboard"
 # plot dimensions
@@ -15,7 +18,7 @@ set y_end 300
 set y_step 50
 set y_axis [list $y_start $y_end $y_step]
 # x-axis
-set hours_displayed 6
+set hours_displayed 12
 set time_scale [clock add 0 $hours_displayed hours]
 set x_leading_minutes 15
 set x_time_format {%l:%M %p}
@@ -80,9 +83,28 @@ proc plot_data {start stop xlist ylist} {
     }
     $s vector low $start $::low_cutoff $::time_scale 0
     $s vector high $start $::high_cutoff $::time_scale 0
-    # TODO: find min and max values and draw baloons
+    # TODO: find min and max values and draw balloons
     foreach x $xlist y $ylist {
         $s dot data $x $y _
     }
     return $s
 }
+
+set nightscout_url <your_nightscout_url>
+set api_endpoint /api/v1/entries/sgv.json
+
+set params [::http::formatQuery count 1000 find\[date\]\[\$gte\] 1514221161000]
+# register socket for https requests
+http::register https 443 [list ::tls::socket -tls1 1]
+set token [::http::geturl "$nightscout_url$api_endpoint?$params"]
+set data [::http::data $token]
+set dictionary [::json::json2dict $data]
+set x_list {}
+set y_list {}
+foreach doc $dictionary {
+    lappend y_list [dict get $doc sgv]
+    lappend x_list [expr {[dict get $doc date] / 1000}]
+}
+puts $x_list
+puts $y_list
+plot_data $start $stop $x_list $y_list
